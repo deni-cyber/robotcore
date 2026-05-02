@@ -1,0 +1,78 @@
+import cv2
+from edge_impulse_linux.image import ImageImpulseRunner
+
+MODEL_PATH = "modelfile.eim"
+
+def main():
+    # Initialize runner
+    runner = ImageImpulseRunner(MODEL_PATH)
+    model_info = runner.init()
+
+    print("Model loaded")
+    print("Project:", model_info['project']['name'])
+    print("Labels:", model_info['model_parameters']['labels'])
+
+    # Open webcam (or use Pi camera index 0)
+    cap = cv2.VideoCapture(0)
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Convert BGR → RGB (Edge Impulse expects RGB)
+            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Run inference
+            result = runner.classify(img)
+
+            # ---- HANDLE RESULTS ----
+            if "classification" in result["result"]:
+                # Classification model
+                predictions = result["result"]["classification"]
+
+                label = max(predictions, key=predictions.get)
+                confidence = predictions[label]
+
+                text = f"{label}: {confidence:.2f}"
+
+                cv2.putText(frame, text, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1,
+                            (0, 255, 0), 2)
+
+            elif "bounding_boxes" in result["result"]:
+                # Object detection model
+                boxes = result["result"]["bounding_boxes"]
+
+                for box in boxes:
+                    x = int(box["x"])
+                    y = int(box["y"])
+                    w = int(box["width"])
+                    h = int(box["height"])
+                    label = box["label"]
+                    confidence = box["value"]
+
+                    cv2.rectangle(frame, (x, y), (x+w, y+h),
+                                  (0, 255, 0), 2)
+
+                    cv2.putText(frame,
+                                f"{label}: {confidence:.2f}",
+                                (x, y - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.6,
+                                (0, 255, 0), 2)
+
+            # Show output
+            cv2.imshow("Litter Detection", frame)
+
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
+
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        runner.stop()
+
+if __name__ == "__main__":
+    main()
